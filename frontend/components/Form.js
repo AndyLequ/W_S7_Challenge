@@ -1,15 +1,23 @@
 import React, { useEffect, useState } from 'react'
+import * as yup from 'yup'
 
-// 👇 Here are the validation errors you will use with Yup.
+// 👇 Validation errors using Yup.
 const validationErrors = {
   fullNameTooShort: 'full name must be at least 3 characters',
   fullNameTooLong: 'full name must be at most 20 characters',
-  sizeIncorrect: 'size must be S or M or L'
+  sizeIncorrect: 'size must be S or M or L',
 }
 
-// 👇 Here you will create your schema.
+// 👇 Create your validation schema.
+const validationSchema = yup.object({
+  fullName: yup.string()
+    .min(3, validationErrors.fullNameTooShort)
+    .max(20, validationErrors.fullNameTooLong)
+    .trim(),
+  size: yup.string()
+    .oneOf(["S", "M", "L"], validationErrors.sizeIncorrect),
+})
 
-// 👇 This array could help you construct your checkboxes using .map in the JSX.
 const toppings = [
   { topping_id: '1', text: 'Pepperoni' },
   { topping_id: '2', text: 'Green Peppers' },
@@ -19,43 +27,146 @@ const toppings = [
 ]
 
 export default function Form() {
+  const initialFormData = {
+    fullName: '',
+    size: '',
+    toppings: [],
+  }
+
+  const [formData, setFormData] = useState(initialFormData)
+  const [errors, setErrors] = useState({})
+  const [formIsValid, setFormIsValid] = useState(false)
+  const [submissionStatus, setSubmissionStatus] = useState(null) // Track success or failure
+  const [submittedData, setSubmittedData] = useState(null) // Store submitted data
+  const [toppingsError, setToppingsError] = useState(false)
+
+  useEffect(() => {
+    const validateForm = async () => {
+      try {
+        await validationSchema.validate(formData, { abortEarly: false })
+        setFormIsValid(true)
+        setErrors({})
+      } catch (validationErrors) {
+        setFormIsValid(false)
+        const formErrors = {}
+        validationErrors.inner.forEach((error) => {
+          formErrors[error.path] = error.message
+        })
+        setErrors(formErrors)
+      }
+
+      if (formData.toppings.length === 0) {
+        setToppingsError(true)
+      } else {
+        setToppingsError(false)
+      }
+    }
+    validateForm()
+  }, [formData])
+
+  const handleChange = (evt) => {
+    setFormData({
+      ...formData,
+      [evt.target.name]: evt.target.value,
+    })
+  }
+
+  const handleToppingChange = (evt) => {
+    const { checked, name } = evt.target
+    setFormData((prevData) => {
+      if (checked) {
+        return {
+          ...prevData,
+          toppings: [...prevData.toppings, name],
+        }
+      } else {
+        return {
+          ...prevData,
+          toppings: prevData.toppings.filter((topping) => topping !== name),
+        }
+      }
+    })
+  }
+
+  const handleSubmit = (evt) => {
+    evt.preventDefault()
+
+    if (formIsValid) {
+      setSubmissionStatus('success') // Set success status
+      setSubmittedData(formData) // Store the submitted form data
+
+      // Reset the form after submission
+      setFormData(initialFormData) // Reset form fields to initial state
+      setFormIsValid(false) // Disable form until it is valid again
+      setErrors({}) // Clear any existing errors
+    } else {
+      setSubmissionStatus('error') // Set failure status
+    }
+  }
+
+  const getSuccessMessage = () => {
+    if (!submittedData) return null
+
+    const { fullName, size, toppings } = submittedData
+    const sizeText = size === 'S' ? 'small' : size === 'M' ? 'medium' : 'large'
+
+    if (toppings.length === 0) {
+      return `Thank you for your order, ${fullName}! Your ${sizeText} pizza with no toppings is on the way.`
+    } else if (toppings.length === 1) {
+      return `Thank you for your order, ${fullName}! Your ${sizeText} pizza with 1 topping is on the way.`
+    } else {
+      return `Thank you for your order, ${fullName}! Your ${sizeText} pizza with ${toppings.length} toppings is on the way.`
+    }
+  }
+
   return (
-    <form>
+    <form onSubmit={handleSubmit}>
       <h2>Order Your Pizza</h2>
-      {true && <div className='success'>Thank you for your order!</div>}
-      {true && <div className='failure'>Something went wrong</div>}
+      {/* Conditionally show success or failure message */}
+      {submissionStatus === 'success' && (
+        <div className='success'>{getSuccessMessage()}</div>
+      )}
+      {submissionStatus === 'error' && (
+        <div className='failure'>Something went wrong, please try again!</div>
+      )}
 
       <div className="input-group">
         <div>
           <label htmlFor="fullName">Full Name</label><br />
-          <input placeholder="Type full name" id="fullName" type="text" />
+          <input onChange={handleChange} value={formData.fullName} placeholder="Type full name" id="fullName" type="text" name='fullName' />
         </div>
-        {true && <div className='error'>Bad value</div>}
+        {errors.fullName && <div className='error'>{errors.fullName}</div>}
       </div>
 
       <div className="input-group">
         <div>
           <label htmlFor="size">Size</label><br />
-          <select id="size">
+          <select id="size" onChange={handleChange} name='size' value={formData.size}>
             <option value="">----Choose Size----</option>
-            {/* Fill out the missing options */}
+            <option value="S">Small</option>
+            <option value="M">Medium</option>
+            <option value="L">Large</option>
           </select>
         </div>
-        {true && <div className='error'>Bad value</div>}
+        {errors.size && <div className='error'>{errors.size}</div>}
       </div>
 
       <div className="input-group">
-        {/* 👇 Maybe you could generate the checkboxes dynamically */}
-        <label key="1">
-          <input
-            name="Pepperoni"
-            type="checkbox"
-          />
-          Pepperoni<br />
-        </label>
+        {toppings.map((topping) => (
+          <label key={topping.topping_id}>
+            <input
+              name={topping.text}
+              type="checkbox"
+              onChange={handleToppingChange}
+              checked={formData.toppings.includes(topping.text)}
+            />
+            {topping.text}<br />
+          </label>
+        ))}
       </div>
-      {/* 👇 Make sure the submit stays disabled until the form validates! */}
-      <input type="submit" />
+      {toppingsError && <div className='error'>Please select at least one topping.</div>}
+
+      <input disabled={!formIsValid} type="submit" value="Submit Order" />
     </form>
   )
 }
